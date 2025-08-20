@@ -28,7 +28,7 @@ def test_basic_api_connection():
     print("=" * 60)
     
     try:
-        response = requests.get(f"{BASE_URL}/", timeout=10)
+        response = requests.get(f"{BASE_URL}", timeout=10)
         
         if response.status_code == 200:
             data = response.json()
