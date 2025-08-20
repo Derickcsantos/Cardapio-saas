@@ -278,6 +278,105 @@ async function handleRoute(request, { params }) {
       }))
     }
 
+    // Delete Menu Image
+    if (route.startsWith('/menu/images/') && method === 'DELETE') {
+      const imageId = route.split('/menu/images/')[1]
+      
+      // Get image info first
+      const { data: image } = await supabaseAdmin
+        .from('menu_images')
+        .select('image_url')
+        .eq('id', imageId)
+        .single()
+
+      if (!image) {
+        return handleCORS(NextResponse.json(
+          { error: "Image not found" }, 
+          { status: 404 }
+        ))
+      }
+
+      // Delete from database
+      const { error: dbError } = await supabaseAdmin
+        .from('menu_images')
+        .delete()
+        .eq('id', imageId)
+
+      if (dbError) {
+        return handleCORS(NextResponse.json(
+          { error: "Failed to delete image" }, 
+          { status: 500 }
+        ))
+      }
+
+      // Delete from storage (optional, as we might want to keep for backup)
+      try {
+        const fileName = image.image_url.split('/').pop()
+        await supabaseAdmin.storage
+          .from('menu-images')
+          .remove([fileName])
+      } catch (error) {
+        console.log('Storage deletion failed:', error)
+      }
+
+      return handleCORS(NextResponse.json({
+        message: "Image deleted successfully"
+      }))
+    }
+
+    // Update Organization
+    if (route.startsWith('/organizations/') && route.endsWith('/') === false && method === 'PUT') {
+      const orgId = route.split('/organizations/')[1]
+      const { whatsapp, instagram } = await request.json()
+      
+      const { error } = await supabaseAdmin
+        .from('organizations')
+        .update({ 
+          whatsapp: whatsapp || null, 
+          instagram: instagram || null 
+        })
+        .eq('id', orgId)
+
+      if (error) {
+        return handleCORS(NextResponse.json(
+          { error: "Failed to update organization" }, 
+          { status: 500 }
+        ))
+      }
+
+      return handleCORS(NextResponse.json({
+        message: "Organization updated successfully"
+      }))
+    }
+
+    // Get Organization Users
+    if (route.match(/\/organizations\/[^\/]+\/users$/) && method === 'GET') {
+      const orgId = route.split('/organizations/')[1].split('/users')[0]
+      
+      const { data: users } = await supabaseAdmin
+        .from('user_organizations')
+        .select(`
+          role,
+          users (
+            id,
+            name,
+            email
+          )
+        `)
+        .eq('organization_id', orgId)
+
+      const formattedUsers = users?.map(item => ({
+        id: item.users.id,
+        name: item.users.name,
+        email: item.users.email,
+        role: item.role
+      })) || []
+
+      return handleCORS(NextResponse.json({
+        users: formattedUsers
+      }))
+    }
+
     // Master Admin Dashboard - Get Stats
     if (route === '/admin/stats' && method === 'GET') {
       // Get total users count
