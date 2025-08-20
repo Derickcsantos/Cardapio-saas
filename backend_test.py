@@ -157,7 +157,7 @@ def test_menu_upload_endpoint():
         # Test with missing data to verify endpoint exists and validates
         response = requests.post(
             f"{BASE_URL}/menu/upload", 
-            data={},  # Empty form data
+            files={},  # Empty files data
             timeout=10
         )
         
