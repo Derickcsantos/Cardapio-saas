@@ -20,10 +20,13 @@ import {
   Instagram,
   MessageCircle,
   Copy,
-  Building2
+  Building2,
+  Eye,
+  Edit
 } from 'lucide-react'
 import ImageUploader from '@/components/ImageUploader'
 import Menu3DViewer from '@/components/Menu3DViewer'
+import UserManagement from '@/components/UserManagement'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -58,9 +61,13 @@ export default function Dashboard() {
 
   const loadMenuImages = async (orgId) => {
     try {
-      // Since we don't have the slug-based endpoint working yet, 
-      // we'll simulate loading images for now
-      setMenuImages([])
+      if (!organization?.slug) return
+      
+      const response = await fetch(`/api/menu/${organization.slug}`)
+      if (response.ok) {
+        const data = await response.json()
+        setMenuImages(data.menuImages || [])
+      }
     } catch (error) {
       console.error('Error loading menu images:', error)
     }
@@ -77,13 +84,54 @@ export default function Dashboard() {
     const whatsapp = formData.get('whatsapp')
     const instagram = formData.get('instagram')
     
-    toast.success('Organização atualizada com sucesso!')
+    try {
+      const response = await fetch(`/api/organizations/${organization.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ whatsapp, instagram }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setOrganization(prev => ({ ...prev, whatsapp, instagram }))
+        toast.success('Organização atualizada com sucesso!')
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Erro ao atualizar organização')
+      }
+    } catch (error) {
+      toast.error('Erro de conexão. Tente novamente.')
+    }
   }
 
   const copyUrl = () => {
     const url = `${window.location.origin}/${organization?.slug}`
     navigator.clipboard.writeText(url)
     toast.success('URL copiada para a área de transferência!')
+  }
+
+  const handleDeleteImage = async (imageId) => {
+    if (!confirm('Tem certeza que deseja excluir esta imagem?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/menu/images/${imageId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        setMenuImages(prev => prev.filter(img => img.id !== imageId))
+        toast.success('Imagem excluída com sucesso!')
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Erro ao excluir imagem')
+      }
+    } catch (error) {
+      toast.error('Erro de conexão. Tente novamente.')
+    }
   }
 
   if (loading) {
@@ -178,8 +226,9 @@ export default function Dashboard() {
 
         {/* Main Content */}
         <Tabs defaultValue="menu" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="menu">📖 Cardápio</TabsTrigger>
+            <TabsTrigger value="users">👥 Usuários</TabsTrigger>
             <TabsTrigger value="settings">⚙️ Configurações</TabsTrigger>
             <TabsTrigger value="preview">👁️ Visualizar</TabsTrigger>
           </TabsList>
@@ -198,7 +247,6 @@ export default function Dashboard() {
                     organizationId={organization.id}
                     onUploadSuccess={(imageData) => {
                       setMenuImages(prev => [...prev, imageData])
-                      toast.success('Imagem enviada com sucesso!')
                     }}
                   />
                 )}
@@ -223,16 +271,22 @@ export default function Dashboard() {
                           className="w-full h-48 object-cover rounded-lg"
                         />
                         <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setMenuImages(prev => prev.filter(img => img.id !== image.id))
-                              toast.success('Imagem removida')
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => window.open(image.imageUrl, '_blank')}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDeleteImage(image.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                         <Badge className="absolute top-2 left-2">
                           Página {index + 1}
@@ -243,6 +297,13 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="users" className="space-y-6">
+            <UserManagement 
+              organizationId={organization?.id}
+              currentUser={user}
+            />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
@@ -290,6 +351,9 @@ export default function Dashboard() {
                       placeholder="(11) 99999-9999"
                       defaultValue={organization?.whatsapp}
                     />
+                    <p className="text-xs text-gray-500">
+                      Formato: (11) 99999-9999 ou 5511999999999
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -303,6 +367,9 @@ export default function Dashboard() {
                       placeholder="@meurestaurante"
                       defaultValue={organization?.instagram}
                     />
+                    <p className="text-xs text-gray-500">
+                      Digite apenas o nome de usuário (com ou sem @)
+                    </p>
                   </div>
 
                   <Button type="submit" className="w-full">
@@ -333,7 +400,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="bg-gray-100 rounded-lg p-8 min-h-[400px]">
+                <div className="bg-gray-100 rounded-lg p-4 min-h-[400px]">
                   {menuImages.length > 0 ? (
                     <Menu3DViewer images={menuImages} />
                   ) : (
@@ -348,6 +415,34 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">{menuImages.length}</div>
+                  <div className="text-sm text-gray-500">Imagens do cardápio</div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {organization?.whatsapp ? '✓' : '✗'}
+                  </div>
+                  <div className="text-sm text-gray-500">WhatsApp configurado</div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {organization?.instagram ? '✓' : '✗'}
+                  </div>
+                  <div className="text-sm text-gray-500">Instagram configurado</div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
