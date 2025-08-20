@@ -154,14 +154,14 @@ def test_menu_upload_endpoint():
     print("=" * 60)
     
     try:
-        # Test with missing data to verify endpoint exists and validates
+        # Test with missing image to verify endpoint exists and validates
         response = requests.post(
             f"{BASE_URL}/menu/upload", 
-            files={},  # Empty files data
+            data={"organizationId": "test-org-id"},  # Missing image file
             timeout=10
         )
         
-        # We expect a 400 error for missing fields, which confirms endpoint exists
+        # We expect a 400 error for missing image, which confirms endpoint exists
         if response.status_code == 400:
             data = response.json()
             if "error" in data and ("required" in data["error"].lower() or "image" in data["error"].lower()):
