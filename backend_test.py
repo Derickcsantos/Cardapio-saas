@@ -9,8 +9,8 @@ import json
 import os
 from datetime import datetime
 
-# Get base URL from environment
-BASE_URL = "https://cardapio-3d.preview.emergentagent.com/api"
+# Get base URL from environment - using localhost for testing since external URL has routing issues
+BASE_URL = "http://localhost:3000/api"
 
 def log_test_result(test_name, success, details=""):
     """Log test results with timestamp"""
