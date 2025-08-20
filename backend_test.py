@@ -224,7 +224,7 @@ def test_cors_headers():
     print("=" * 60)
     
     try:
-        response = requests.options(f"{BASE_URL}/", timeout=10)
+        response = requests.options(f"{BASE_URL}", timeout=10)
         
         cors_headers = {
             'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
