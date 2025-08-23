@@ -1,7 +1,6 @@
 import { createServerClient } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { hash } from 'bcryptjs'
 
 export async function POST(request) {
   try {
@@ -16,28 +15,13 @@ export async function POST(request) {
 
     const supabase = createServerClient()
     
-    // 1. Check if user exists in auth
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle()
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'Este email já está em uso' },
-        { status: 400 }
-      )
-    }
-
-    // 2. Create auth user
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    // 1. Create auth user first
+    const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: {
-          name,
-        },
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        name,
       },
     })
 
@@ -50,17 +34,15 @@ export async function POST(request) {
     }
 
     const userId = authData.user.id
-    const passwordHash = await hash(password, 10)
 
-    // 3. Create user in database
+    // 2. Create user in our users table
     const { error: userError } = await supabase
       .from('users')
       .insert([{
         id: userId,
         email,
         name,
-        password_hash: passwordHash,
-        type: 'user',
+        role: 'user',
         is_active: true
       }])
 
@@ -76,17 +58,44 @@ export async function POST(request) {
 
     let organization = null
     
-    // 4. Create organization if name provided
+    // 3. Create organization if name provided
     if (organizationName) {
       const orgId = uuidv4()
+      const slug = organizationName
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim('-')
       
+      // Check if slug exists
+      const { data: existingOrg } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('slug', slug)
+        .single()
+
+      if (existingOrg) {
+        // Cleanup user if org creation fails
+        await Promise.all([
+          supabase.from('users').delete().eq('id', userId),
+          supabase.auth.admin.deleteUser(userId)
+        ])
+        return NextResponse.json(
+          { error: 'Nome da organização já existe. Escolha outro nome.' },
+          { status: 400 }
+        )
+      }
+
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .insert([{
           id: orgId,
           name: organizationName,
+          slug,
           owner_id: userId,
-          subscription_status: 'inactive',
           plan: 'free',
         }])
         .select()
@@ -131,29 +140,18 @@ export async function POST(request) {
       organization = orgData
     }
 
-    // 5. Sign in the user
-    const { data: { session }, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (signInError) {
-      console.error('Auto sign-in error:', signInError)
-      // Don't fail the signup if auto sign-in fails
-    }
-
     return NextResponse.json({
       user: {
         id: userId,
         email,
         name,
-        type: 'user',
+        role: 'user',
         organizations: organization ? [{
           ...organization,
           userRole: 'owner'
         }] : []
       },
-      session: session || null
+      message: 'Usuário criado com sucesso! Você pode fazer login agora.'
     }, { status: 201 })
 
   } catch (error) {

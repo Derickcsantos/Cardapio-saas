@@ -18,17 +18,7 @@ export async function GET(request) {
     // Get user details with organization info
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select(`
-        *,
-        organizations (
-          id,
-          name,
-          plan,
-          subscription_status,
-          logo_url,
-          created_at
-        )
-      `)
+      .select('*')
       .eq('id', session.user.id)
       .single()
 
@@ -39,45 +29,37 @@ export async function GET(request) {
       )
     }
 
-    // For master admin, get system stats
-    let systemStats = null
-    if (user.role === 'master') {
-      const [
-        { count: menuCount },
-        { count: userCount },
-        { count: organizationCount },
-        { data: storageData }
-      ] = await Promise.all([
-        supabase
-          .from('menu_items')
-          .select('*', { count: 'exact', head: true }),
-        supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true }),
-        supabase
-          .from('organizations')
-          .select('*', { count: 'exact', head: true }),
-        supabase
-          .storage
-          .from('menu-images')
-          .list()
-      ])
+    // Get user's organizations
+    const { data: userOrgs } = await supabase
+      .from('user_organizations')
+      .select(`
+        role,
+        organizations (
+          id,
+          name,
+          slug,
+          plan,
+          instagram,
+          whatsapp,
+          tiktok,
+          address,
+          created_at
+        )
+      `)
+      .eq('user_id', user.id)
 
-      systemStats = {
-        menuCount,
-        userCount,
-        organizationCount,
-        storageUsage: storageData?.length || 0
-      }
-    }
+    const organizations = (userOrgs || []).map(org => ({
+      ...org.organizations,
+      userRole: org.role
+    }))
 
     // Return user data without sensitive information
-    const { password, organizations, ...userWithoutPassword } = user
-    
     return NextResponse.json({
-      ...userWithoutPassword,
-      organization: organizations || null,
-      systemStats
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      organizations
     })
 
   } catch (error) {

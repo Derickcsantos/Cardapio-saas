@@ -14,7 +14,7 @@ export async function POST(request) {
 
     const supabase = createServerClient()
     
-    // 1. First try to authenticate with Supabase Auth
+    // 1. Authenticate with Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -37,7 +37,6 @@ export async function POST(request) {
 
     if (userError || !userData) {
       console.error('User not found in database:', userError)
-      await supabase.auth.signOut()
       return NextResponse.json(
         { error: 'Usuário não encontrado' },
         { status: 404 }
@@ -46,7 +45,6 @@ export async function POST(request) {
 
     // 3. Check if user is active
     if (userData.is_active === false) {
-      await supabase.auth.signOut()
       return NextResponse.json(
         { error: 'Esta conta está desativada. Entre em contato com o suporte.' },
         { status: 403 }
@@ -61,9 +59,12 @@ export async function POST(request) {
         organizations (
           id,
           name,
+          slug,
           plan,
-          subscription_status,
-          logo_url,
+          instagram,
+          whatsapp,
+          tiktok,
+          address,
           created_at
         )
       `)
@@ -71,7 +72,6 @@ export async function POST(request) {
 
     if (orgError) {
       console.error('Error fetching organizations:', orgError)
-      // Don't fail the login if we can't get organizations
     }
 
     // Format organizations data
@@ -80,19 +80,14 @@ export async function POST(request) {
       userRole: org.role
     }))
 
-    // 5. Check subscription status for non-master users
-    const requiresSubscription = userData.type !== 'master' && 
-      organizations.length > 0 &&
-      !organizations.some(org => org.subscription_status === 'active')
-
-    // 6. Prepare user data to return (without sensitive info)
-    const { password_hash, ...userWithoutPassword } = userData
-    
+    // 5. Prepare user data to return (without sensitive info)
     return NextResponse.json({
       user: {
-        ...userWithoutPassword,
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
         organizations,
-        requires_subscription: requiresSubscription
       },
       session: authData.session
     })

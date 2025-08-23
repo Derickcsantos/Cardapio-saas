@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Eye, EyeOff, Building2, User, Shield } from 'lucide-react'
+import { Eye, EyeOff, Building2, User, Shield, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 export default function AuthPage() {
   const router = useRouter()
@@ -20,13 +21,16 @@ export default function AuthPage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/auth/me')
-        if (response.ok) {
-          const user = await response.json()
-          if (user.type === 'master') {
-            router.push('/admin')
-          } else {
-            router.push('/dashboard')
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          const response = await fetch('/api/auth/me')
+          if (response.ok) {
+            const user = await response.json()
+            if (user.role === 'master') {
+              router.push('/admin')
+            } else {
+              router.push('/dashboard')
+            }
           }
         }
       } catch (error) {
@@ -57,14 +61,13 @@ export default function AuthPage() {
       const data = await response.json()
 
       if (response.ok) {
-        // Store user data in localStorage
-        localStorage.setItem('user', JSON.stringify(data.user))
+        toast.success('Login realizado com sucesso!')
         
-        // Redirect based on user type
-        if (data.user.role === 'admin' || data.user.role === 'master') {
-          router.push('/dashboard')
+        // Redirect based on user role
+        if (data.user.role === 'master') {
+          router.push('/admin')
         } else {
-          router.push('/')
+          router.push('/dashboard')
         }
       } else {
         toast.error(data.error || 'Credenciais inválidas')
@@ -87,6 +90,12 @@ export default function AuthPage() {
     const password = formData.get('password')
     const organizationName = formData.get('organizationName')
 
+    if (password.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres')
+      setLoading(false)
+      return
+    }
+
     try {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
@@ -99,8 +108,10 @@ export default function AuthPage() {
       const data = await response.json()
 
       if (response.ok) {
-        toast.success('Conta criada com sucesso! Por favor, verifique seu e-mail.')
+        toast.success(data.message || 'Conta criada com sucesso!')
         setActiveTab('login')
+        // Clear form
+        e.target.reset()
       } else {
         toast.error(data.error || 'Erro ao criar conta')
       }
@@ -113,18 +124,20 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <Building2 className="h-12 w-12 text-blue-600" />
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full p-3">
+              <Building2 className="h-8 w-8 text-white" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">
+          <CardTitle className="text-2xl font-bold text-gray-900">
             {activeTab === 'login' ? 'Acesse sua conta' : 'Crie sua conta'}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-gray-600">
             {activeTab === 'login' 
-              ? 'Entre para gerenciar seu cardápio' 
+              ? 'Entre para gerenciar seu cardápio digital' 
               : 'Preencha os dados para criar sua conta'}
           </CardDescription>
         </CardHeader>
@@ -145,6 +158,7 @@ export default function AuthPage() {
                     type="email" 
                     placeholder="seu@email.com" 
                     required 
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2 relative">
@@ -156,11 +170,13 @@ export default function AuthPage() {
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       required
+                      disabled={loading}
                     />
                     <button
                       type="button"
-                      className="absolute right-2 top-2.5 text-gray-500"
+                      className="absolute right-2 top-2.5 text-gray-500 hover:text-gray-700"
                       onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -171,7 +187,14 @@ export default function AuthPage() {
                   </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Entrando...' : 'Entrar'}
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Entrando...
+                    </>
+                  ) : (
+                    'Entrar'
+                  )}
                 </Button>
               </form>
             </TabsContent>
@@ -179,13 +202,14 @@ export default function AuthPage() {
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signup-name">Nome</Label>
+                  <Label htmlFor="signup-name">Nome completo</Label>
                   <Input 
                     id="signup-name" 
                     name="name" 
                     type="text" 
                     placeholder="Seu nome completo" 
                     required 
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -196,6 +220,7 @@ export default function AuthPage() {
                     type="email" 
                     placeholder="seu@email.com" 
                     required 
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -206,6 +231,7 @@ export default function AuthPage() {
                     type="text" 
                     placeholder="Nome do seu negócio" 
                     required 
+                    disabled={loading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -218,11 +244,13 @@ export default function AuthPage() {
                       placeholder="••••••••"
                       minLength={6}
                       required
+                      disabled={loading}
                     />
                     <button
                       type="button"
-                      className="absolute right-2 top-2.5 text-gray-500"
+                      className="absolute right-2 top-2.5 text-gray-500 hover:text-gray-700"
                       onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -231,9 +259,17 @@ export default function AuthPage() {
                       )}
                     </button>
                   </div>
+                  <p className="text-xs text-gray-500">Mínimo de 6 caracteres</p>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Criando conta...' : 'Criar conta'}
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Criando conta...
+                    </>
+                  ) : (
+                    'Criar conta'
+                  )}
                 </Button>
               </form>
             </TabsContent>
