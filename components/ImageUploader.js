@@ -1,142 +1,167 @@
-'use client'
+'use client';
 
-import { useState, useCallback } from 'react'
-import { useDropzone } from 'react-dropzone'
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import { toast } from "sonner"
-import { Upload, X, Image as ImageIcon } from 'lucide-react'
+import { useState, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Upload, X, Loader2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { checkImageUploadLimit } from '@/lib/imageLimits';
 
-export default function ImageUploader({ organizationId, onUploadSuccess }) {
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
+export default function ImageUploader({ 
+  onUpload, 
+  currentImages = [], 
+  organization,
+  disabled = false 
+}) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const { toast } = useToast();
 
-  const onDrop = useCallback(async (acceptedFiles) => {
-    if (!organizationId) {
-      toast.error('ID da organização não encontrado')
-      return
+  const { canUpload, maxAllowed, currentCount, remaining } = checkImageUploadLimit(
+    currentImages, 
+    organization?.plan || 'free'
+  );
+
+  const uploadImage = useCallback(async (file) => {
+    if (!canUpload) {
+      toast({
+        title: 'Limite de imagens atingido',
+        description: `Seu plano atual permite no máximo ${maxAllowed} imagem${maxAllowed !== 1 ? 's' : ''}. Atualize seu plano para enviar mais imagens.`,
+        variant: 'destructive',
+      });
+      return;
     }
 
-    const file = acceptedFiles[0]
-    if (!file) return
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Por favor, selecione apenas arquivos de imagem')
-      return
+    if (!file.type.match('image.*')) {
+      toast({
+        title: 'Tipo de arquivo inválido',
+        description: 'Por favor, envie apenas imagens (JPEG, PNG, etc.)',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Arquivo muito grande. Máximo 10MB')
-      return
+    // 5MB limit
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Arquivo muito grande',
+        description: 'A imagem não pode ter mais de 5MB',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    setUploading(true)
-    setUploadProgress(0)
+    setIsUploading(true);
 
     try {
-      const formData = new FormData()
-      formData.append('image', file)
-      formData.append('organizationId', organizationId)
-      formData.append('displayOrder', Date.now().toString())
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90))
-      }, 200)
-
-      const response = await fetch('/api/menu/upload', {
+      const response = await fetch(`/api/upload?organizationId=${organization.id}`, {
         method: 'POST',
         body: formData,
-      })
+      });
 
-      clearInterval(progressInterval)
-      setUploadProgress(100)
-
-      const data = await response.json()
-
-      if (response.ok) {
-        toast.success('Imagem enviada com sucesso!')
-        onUploadSuccess({
-          id: data.id,
-          imageUrl: data.imageUrl,
-          displayOrder: parseInt(formData.get('displayOrder'))
-        })
-      } else {
-        toast.error(data.error || 'Erro ao enviar imagem')
+      if (!response.ok) {
+        throw new Error('Falha ao fazer upload da imagem');
       }
-    } catch (error) {
-      toast.error('Erro de conexão. Tente novamente.')
-      console.error('Upload error:', error)
-    } finally {
-      setUploading(false)
-      setUploadProgress(0)
-    }
-  }, [organizationId, onUploadSuccess])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.gif']
-    },
-    maxFiles: 1,
-    disabled: uploading
-  })
+      const data = await response.json();
+      onUpload([...currentImages, data.url]);
+      
+      toast({
+        title: 'Sucesso!',
+        description: 'Imagem enviada com sucesso',
+      });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast({
+        title: 'Erro',
+        description: error.message || 'Falha ao fazer upload da imagem',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [canUpload, currentImages, maxAllowed, onUpload, organization?.id, toast]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      uploadImage(e.dataTransfer.files[0]);
+    }
+  }, [uploadImage]);
+
+  const handleChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      uploadImage(e.target.files[0]);
+    }
+  };
 
   return (
-    <Card className="w-full">
-      <CardContent className="p-6">
-        <div
-          {...getRootProps()}
-          className={`
-            border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-            ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-            ${uploading ? 'pointer-events-none opacity-50' : ''}
-          `}
-        >
-          <input {...getInputProps()} />
-          
-          {uploading ? (
-            <div className="space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">Enviando imagem...</p>
-                <Progress value={uploadProgress} className="w-full max-w-xs mx-auto" />
-                <p className="text-xs text-gray-500">{uploadProgress}%</p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                {isDragActive ? (
-                  <Upload className="h-6 w-6 text-blue-600" />
-                ) : (
-                  <ImageIcon className="h-6 w-6 text-gray-400" />
-                )}
-              </div>
-              
-              <div className="space-y-2">
-                <p className="text-lg font-medium text-gray-900">
-                  {isDragActive ? 'Solte a imagem aqui' : 'Adicionar imagem do cardápio'}
-                </p>
-                <p className="text-sm text-gray-500">
-                  Arraste e solte ou clique para selecionar
-                </p>
-                <p className="text-xs text-gray-400">
-                  PNG, JPG, WEBP até 10MB
-                </p>
-              </div>
-              
-              <Button variant="outline" className="mt-4">
-                <Upload className="h-4 w-4 mr-2" />
-                Selecionar arquivo
-              </Button>
-            </div>
-          )}
+    <div className="w-full">
+      <div 
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+          dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        onDragEnter={() => !disabled && setDragActive(true)}
+        onDragLeave={() => setDragActive(false)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          !disabled && setDragActive(true);
+        }}
+        onDrop={handleDrop}
+        onClick={() => !disabled && document.getElementById('file-upload')?.click()}
+      >
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <Upload className="h-10 w-10 text-muted-foreground" />
+          <div>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-primary">Clique para enviar</span> ou arraste e solte
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {maxAllowed === 'unlimited' 
+                ? 'SVG, PNG, JPG ou GIF (máx. 5MB)'
+                : `Restam ${remaining} de ${maxAllowed} imagens no seu plano atual`}
+            </p>
+          </div>
+          <Button 
+            type="button" 
+            variant="outline" 
+            size="sm" 
+            className="mt-2"
+            disabled={disabled || isUploading}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              'Selecionar arquivo'
+            )}
+          </Button>
+          <input
+            id="file-upload"
+            name="file-upload"
+            type="file"
+            className="sr-only"
+            accept="image/*"
+            onChange={handleChange}
+            disabled={disabled || isUploading}
+          />
         </div>
-      </CardContent>
-    </Card>
-  )
+      </div>
+      
+      {!canUpload && (
+        <div className="mt-4 text-sm text-amber-600 dark:text-amber-400">
+          Você atingiu o limite de imagens do seu plano. <a href="/pricing" className="font-medium text-primary hover:underline">Atualize seu plano</a> para enviar mais imagens.
+        </div>
+      )}
+    </div>
+  );
 }
