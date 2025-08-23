@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase'
+import { createAdminClient, supabase } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 
 export async function POST(request) {
@@ -12,7 +12,7 @@ export async function POST(request) {
       )
     }
 
-    const supabase = createServerClient()
+    const adminClient = createAdminClient()
     
     // 1. Authenticate with Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -29,7 +29,7 @@ export async function POST(request) {
     }
 
     // 2. Get user details from database
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await adminClient
       .from('users')
       .select('*')
       .eq('id', authData.user.id)
@@ -52,7 +52,7 @@ export async function POST(request) {
     }
 
     // 4. Get user's organizations
-    const { data: userOrgs, error: orgError } = await supabase
+    const { data: userOrgs, error: orgError } = await adminClient
       .from('user_organizations')
       .select(`
         role,

@@ -1,6 +1,17 @@
-import { createServerClient } from '@/lib/supabase'
+import { createAdminClient } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
+
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim('-')
+}
 
 export async function POST(request) {
   try {
@@ -13,7 +24,14 @@ export async function POST(request) {
       )
     }
 
-    const supabase = createServerClient()
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'A senha deve ter pelo menos 6 caracteres' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createAdminClient()
     
     // 1. Create auth user first
     const { data: authData, error: signUpError } = await supabase.auth.admin.createUser({
@@ -61,14 +79,7 @@ export async function POST(request) {
     // 3. Create organization if name provided
     if (organizationName) {
       const orgId = uuidv4()
-      const slug = organizationName
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim('-')
+      const slug = generateSlug(organizationName)
       
       // Check if slug exists
       const { data: existingOrg } = await supabase
