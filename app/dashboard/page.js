@@ -35,102 +35,106 @@ export default function Dashboard() {
   const [menuImages, setMenuImages] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Check authentication and fetch user data
   useEffect(() => {
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      router.push('/')
-      return
-    }
-
-    const parsedUser = JSON.parse(userData)
-    setUser(parsedUser)
-
-    if (parsedUser.type === 'master') {
-      router.push('/admin')
-      return
-    }
-
-    if (parsedUser.user_organizations && parsedUser.user_organizations.length > 0) {
-      const org = parsedUser.user_organizations[0].organizations
-      setOrganization(org)
-      loadMenuImages(org.id)
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/me')
+        if (!response.ok) {
+          throw new Error('Not authenticated')
+        }
+        
+        const userData = await response.json()
+        setUser(userData)
+        
+        // Fetch organization data
+        const orgResponse = await fetch(`/api/organization?userId=${userData.id}`)
+        if (orgResponse.ok) {
+          const orgData = await orgResponse.json()
+          setOrganization(orgData)
+          
+          // Fetch menu images if organization exists
+          if (orgData.id) {
+            const imagesResponse = await fetch(`/api/menu?organizationId=${orgData.id}`)
+            if (imagesResponse.ok) {
+              const images = await imagesResponse.json()
+              setMenuImages(images)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        router.push('/?error=session_expired')
+      } finally {
+        setLoading(false)
+      }
     }
     
-    setLoading(false)
+    checkAuth()
   }, [router])
 
-  const loadMenuImages = async (orgId) => {
+  const handleLogout = async () => {
     try {
-      if (!organization?.slug) return
-      
-      const response = await fetch(`/api/menu/${organization.slug}`)
-      if (response.ok) {
-        const data = await response.json()
-        setMenuImages(data.menuImages || [])
-      }
+      await fetch('/api/auth/logout', {
+        method: 'POST'
+      })
+      localStorage.removeItem('user')
+      router.push('/')
     } catch (error) {
-      console.error('Error loading menu images:', error)
+      console.error('Logout error:', error)
+      toast.error('Erro ao fazer logout')
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('user')
-    router.push('/')
-  }
-
-  const handleUpdateOrganization = async (e) => {
+  const handleSaveOrganization = async (e) => {
     e.preventDefault()
-    const formData = new FormData(e.target)
-    const whatsapp = formData.get('whatsapp')
-    const instagram = formData.get('instagram')
+    if (!organization) return
     
     try {
-      const response = await fetch(`/api/organizations/${organization.id}`, {
+      const response = await fetch(`/api/organization/${organization.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ whatsapp, instagram }),
+        body: JSON.stringify(organization),
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setOrganization(prev => ({ ...prev, whatsapp, instagram }))
-        toast.success('Organização atualizada com sucesso!')
+        toast.success('Dados salvos com sucesso!')
       } else {
         const data = await response.json()
-        toast.error(data.error || 'Erro ao atualizar organização')
+        toast.error(data.error || 'Erro ao salvar')
       }
     } catch (error) {
-      toast.error('Erro de conexão. Tente novamente.')
+      console.error('Save error:', error)
+      toast.error('Erro ao salvar as alterações')
     }
   }
 
-  const copyUrl = () => {
-    const url = `${window.location.origin}/${organization?.slug}`
-    navigator.clipboard.writeText(url)
-    toast.success('URL copiada para a área de transferência!')
-  }
-
-  const handleDeleteImage = async (imageId) => {
-    if (!confirm('Tem certeza que deseja excluir esta imagem?')) {
-      return
-    }
-
+  const handleImageUpload = async (file) => {
+    if (!organization) return
+    
+    const formData = new FormData()
+    formData.append('image', file)
+    formData.append('organizationId', organization.id)
+    
     try {
-      const response = await fetch(`/api/menu/images/${imageId}`, {
-        method: 'DELETE',
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData,
       })
-
+      
+      const data = await response.json()
+      
       if (response.ok) {
-        setMenuImages(prev => prev.filter(img => img.id !== imageId))
-        toast.success('Imagem excluída com sucesso!')
+        setMenuImages(prev => [...prev, data])
+        toast.success('Imagem adicionada com sucesso!')
       } else {
-        const data = await response.json()
-        toast.error(data.error || 'Erro ao excluir imagem')
+        throw new Error(data.error || 'Falha ao fazer upload')
       }
     } catch (error) {
-      toast.error('Erro de conexão. Tente novamente.')
+      console.error('Upload error:', error)
+      toast.error(error.message || 'Erro ao fazer upload da imagem')
     }
   }
 
@@ -172,280 +176,234 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardContent className="flex items-center p-6">
-              <div className="bg-blue-100 rounded-full p-3 mr-4">
-                <ImageIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{menuImages.length}</p>
-                <p className="text-sm text-gray-500">Imagens do cardápio</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-center p-6">
-              <div className="bg-green-100 rounded-full p-3 mr-4">
-                <ExternalLink className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">URL Pública</p>
-                <div className="flex items-center space-x-2">
-                  <p className="text-sm text-gray-500 truncate">
-                    /{organization?.slug}
-                  </p>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={copyUrl}
-                    className="h-6 w-6 p-0"
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-center p-6">
-              <div className="bg-purple-100 rounded-full p-3 mr-4">
-                <Users className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">1</p>
-                <p className="text-sm text-gray-500">Usuários</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content */}
-        <Tabs defaultValue="menu" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="menu">📖 Cardápio</TabsTrigger>
-            <TabsTrigger value="users">👥 Usuários</TabsTrigger>
-            <TabsTrigger value="settings">⚙️ Configurações</TabsTrigger>
-            <TabsTrigger value="preview">👁️ Visualizar</TabsTrigger>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <Tabs defaultValue="menu" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="menu">Cardápio</TabsTrigger>
+            <TabsTrigger value="settings">Configurações</TabsTrigger>
+            <TabsTrigger value="team">Equipe</TabsTrigger>
+            <TabsTrigger value="plans">Planos</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="menu" className="space-y-6">
+          <TabsContent value="menu" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Upload de Imagens do Cardápio</CardTitle>
+                <CardTitle>Visualização 3D do Cardápio</CardTitle>
                 <CardDescription>
-                  Faça upload das páginas do seu cardápio. As imagens serão convertidas para WebP automaticamente.
+                  Visualize como ficará o cardápio 3D do seu estabelecimento
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {organization && (
-                  <ImageUploader 
-                    organizationId={organization.id}
-                    onUploadSuccess={(imageData) => {
-                      setMenuImages(prev => [...prev, imageData])
-                    }}
-                  />
-                )}
+                <Menu3DViewer images={menuImages} />
               </CardContent>
             </Card>
 
-            {menuImages.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Imagens do Cardápio</CardTitle>
-                  <CardDescription>
-                    Gerencie as imagens do seu cardápio
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {menuImages.map((image, index) => (
-                      <div key={image.id} className="relative group">
-                        <img
-                          src={image.imageUrl}
-                          alt={`Página ${index + 1} do cardápio`}
-                          className="w-full h-48 object-cover rounded-lg"
-                        />
-                        <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => window.open(image.imageUrl, '_blank')}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteImage(image.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <Badge className="absolute top-2 left-2">
-                          Página {index + 1}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="users" className="space-y-6">
-            <UserManagement 
-              organizationId={organization?.id}
-              currentUser={user}
-            />
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Informações da Organização</CardTitle>
+                <CardTitle>Imagens do Cardápio</CardTitle>
                 <CardDescription>
-                  Configure as informações da sua organização
+                  Adicione e gerencie as imagens do seu cardápio
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleUpdateOrganization} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Nome da organização</Label>
-                    <Input 
-                      defaultValue={organization?.name} 
-                      disabled
-                      className="bg-gray-50"
-                    />
-                    <p className="text-sm text-gray-500">
-                      O nome da organização não pode ser alterado
-                    </p>
+                <ImageUploader onUpload={handleImageUpload} />
+                
+                {menuImages.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-medium mb-3">Suas imagens</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {menuImages.map((image) => (
+                        <div key={image.id} className="relative group">
+                          <img
+                            src={image.url}
+                            alt={image.name}
+                            className="rounded-lg h-32 w-full object-cover"
+                          />
+                          <button
+                            onClick={() => handleDeleteImage(image.id)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurações do Estabelecimento</CardTitle>
+                <CardDescription>
+                  Atualize as informações do seu estabelecimento
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveOrganization} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nome do Estabelecimento</Label>
+                      <Input
+                        id="name"
+                        value={organization?.name || ''}
+                        onChange={(e) => setOrganization({...organization, name: e.target.value})}
+                        placeholder="Nome do seu negócio"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="slug">URL Personalizada</Label>
+                      <div className="flex">
+                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                          {window.location.origin}/
+                        </span>
+                        <Input
+                          id="slug"
+                          value={organization?.slug || ''}
+                          onChange={(e) => setOrganization({...organization, slug: e.target.value})}
+                          placeholder="sua-marca"
+                          className="rounded-l-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="instagram">Instagram</Label>
+                      <div className="flex">
+                        <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                          @
+                        </span>
+                        <Input
+                          id="instagram"
+                          value={organization?.social_media?.instagram?.replace('@', '') || ''}
+                          onChange={(e) => setOrganization({
+                            ...organization, 
+                            social_media: {
+                              ...organization?.social_media,
+                              instagram: e.target.value.startsWith('@') ? e.target.value : `@${e.target.value}`
+                            }
+                          })}
+                          placeholder="seuusuario"
+                          className="rounded-l-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="whatsapp">WhatsApp</Label>
+                      <Input
+                        id="whatsapp"
+                        type="tel"
+                        value={organization?.contact?.whatsapp || ''}
+                        onChange={(e) => setOrganization({
+                          ...organization, 
+                          contact: {
+                            ...organization?.contact,
+                            whatsapp: e.target.value
+                          }
+                        })}
+                        placeholder="(00) 00000-0000"
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Slug da URL</Label>
-                    <Input 
-                      defaultValue={organization?.slug} 
-                      disabled
-                      className="bg-gray-50"
-                    />
-                    <p className="text-sm text-gray-500">
-                      Sua URL pública: {window.location.origin}/{organization?.slug}
-                    </p>
+                  <div className="pt-4">
+                    <Button type="submit" disabled={!organization}>
+                      Salvar alterações
+                    </Button>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="whatsapp">
-                      <MessageCircle className="h-4 w-4 inline mr-2" />
-                      WhatsApp
-                    </Label>
-                    <Input
-                      id="whatsapp"
-                      name="whatsapp"
-                      placeholder="(11) 99999-9999"
-                      defaultValue={organization?.whatsapp}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Formato: (11) 99999-9999 ou 5511999999999
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="instagram">
-                      <Instagram className="h-4 w-4 inline mr-2" />
-                      Instagram
-                    </Label>
-                    <Input
-                      id="instagram"
-                      name="instagram"
-                      placeholder="@meurestaurante"
-                      defaultValue={organization?.instagram}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Digite apenas o nome de usuário (com ou sem @)
-                    </p>
-                  </div>
-
-                  <Button type="submit" className="w-full">
-                    Salvar alterações
-                  </Button>
                 </form>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="preview" className="space-y-6">
+          <TabsContent value="team">
+            <UserManagement organizationId={organization?.id} />
+          </TabsContent>
+
+          <TabsContent value="plans">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Visualização 3D do Cardápio</CardTitle>
-                    <CardDescription>
-                      Veja como seus clientes visualizarão o cardápio
-                    </CardDescription>
-                  </div>
-                  <Button
-                    onClick={() => window.open(`/${organization?.slug}`, '_blank')}
-                    className="flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Abrir página pública
-                  </Button>
-                </div>
+                <CardTitle>Planos e Assinatura</CardTitle>
+                <CardDescription>
+                  Gerencie seu plano de assinatura
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="bg-gray-100 rounded-lg p-4 min-h-[400px]">
-                  {menuImages.length > 0 ? (
-                    <Menu3DViewer images={menuImages} />
-                  ) : (
-                    <div className="text-center text-gray-500 h-full flex items-center justify-center">
+                {organization?.subscription_status === 'active' ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
                       <div>
-                        <ImageIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <p>Nenhuma imagem do cardápio encontrada</p>
-                        <p className="text-sm">Faça upload de algumas imagens para ver a visualização 3D</p>
+                        <h3 className="font-medium">Plano Atual</h3>
+                        <p className="text-sm text-gray-600">
+                          {organization?.plan === 'free' ? 'Grátis' : 
+                           organization?.plan === 'premium' ? 'Premium' : 'Enterprise'}
+                        </p>
                       </div>
+                      <Badge variant="outline" className="bg-green-100 text-green-800">
+                        Ativo
+                      </Badge>
                     </div>
-                  )}
-                </div>
+                    
+                    <div className="mt-6">
+                      <h3 className="font-medium mb-2">Recursos do Plano</h3>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-center">
+                          <svg className="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          {organization?.plan === 'free' ? 'Até 10 itens no cardápio' : 'Itens ilimitados no cardápio'}
+                        </li>
+                        <li className="flex items-center">
+                          <svg className="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          {organization?.plan === 'enterprise' ? 'Suporte prioritário' : 'Suporte por e-mail'}
+                        </li>
+                        {organization?.plan !== 'free' && (
+                          <li className="flex items-center">
+                            <svg className="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Domínio personalizado
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+
+                    {organization?.plan === 'free' && (
+                      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                        <h3 className="font-medium text-blue-800">Atualize seu plano</h3>
+                        <p className="text-sm text-blue-700 mt-1">
+                          Desbloqueie recursos avançados com nossos planos pagos.
+                        </p>
+                        <Button className="mt-3" onClick={() => router.push('/pricing')}>
+                          Ver planos
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <h3 className="text-lg font-medium">Nenhum plano ativo</h3>
+                    <p className="text-gray-600 mt-1 mb-4">
+                      Escolha um plano para começar a usar a plataforma
+                    </p>
+                    <Button onClick={() => router.push('/pricing')}>
+                      Ver planos disponíveis
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
-            
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-blue-600">{menuImages.length}</div>
-                  <div className="text-sm text-gray-500">Imagens do cardápio</div>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {organization?.whatsapp ? '✓' : '✗'}
-                  </div>
-                  <div className="text-sm text-gray-500">WhatsApp configurado</div>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {organization?.instagram ? '✓' : '✗'}
-                  </div>
-                  <div className="text-sm text-gray-500">Instagram configurado</div>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
         </Tabs>
-      </div>
+      </main>
     </div>
   )
 }

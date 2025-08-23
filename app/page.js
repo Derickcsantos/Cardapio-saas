@@ -14,18 +14,27 @@ export default function AuthPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('login')
 
   // Check if user is already logged in
   useEffect(() => {
-    const user = localStorage.getItem('user')
-    if (user) {
-      const userData = JSON.parse(user)
-      if (userData.type === 'master') {
-        router.push('/admin')
-      } else {
-        router.push('/dashboard')
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/me')
+        if (response.ok) {
+          const user = await response.json()
+          if (user.type === 'master') {
+            router.push('/admin')
+          } else {
+            router.push('/dashboard')
+          }
+        }
+      } catch (error) {
+        console.error('Auth check error:', error)
       }
     }
+    
+    checkAuth()
   }, [router])
 
   const handleLogin = async (e) => {
@@ -48,26 +57,27 @@ export default function AuthPage() {
       const data = await response.json()
 
       if (response.ok) {
+        // Store user data in localStorage
         localStorage.setItem('user', JSON.stringify(data.user))
-        toast.success('Login realizado com sucesso!')
         
         // Redirect based on user type
-        if (data.user.type === 'master') {
-          router.push('/admin')
-        } else {
+        if (data.user.role === 'admin' || data.user.role === 'master') {
           router.push('/dashboard')
+        } else {
+          router.push('/')
         }
       } else {
-        toast.error(data.error || 'Erro ao fazer login')
+        toast.error(data.error || 'Credenciais inválidas')
       }
     } catch (error) {
-      toast.error('Erro de conexão. Tente novamente.')
+      console.error('Login error:', error)
+      toast.error('Erro ao fazer login. Tente novamente.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRegister = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault()
     setLoading(true)
     
@@ -75,17 +85,10 @@ export default function AuthPage() {
     const name = formData.get('name')
     const email = formData.get('email')
     const password = formData.get('password')
-    const confirmPassword = formData.get('confirmPassword')
     const organizationName = formData.get('organizationName')
 
-    if (password !== confirmPassword) {
-      toast.error('As senhas não coincidem')
-      setLoading(false)
-      return
-    }
-
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,197 +99,147 @@ export default function AuthPage() {
       const data = await response.json()
 
       if (response.ok) {
-        toast.success('Cadastro realizado com sucesso!')
-        toast.success(`Sua URL: ${window.location.origin}/${data.organizationSlug}`)
-        
-        // Auto login after registration
-        const loginResponse = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email, password }),
-        })
-
-        if (loginResponse.ok) {
-          const loginData = await loginResponse.json()
-          localStorage.setItem('user', JSON.stringify(loginData.user))
-          router.push('/dashboard')
-        }
+        toast.success('Conta criada com sucesso! Por favor, verifique seu e-mail.')
+        setActiveTab('login')
       } else {
-        toast.error(data.error || 'Erro ao fazer cadastro')
+        toast.error(data.error || 'Erro ao criar conta')
       }
     } catch (error) {
-      toast.error('Erro de conexão. Tente novamente.')
+      console.error('Signup error:', error)
+      toast.error('Erro ao criar conta. Tente novamente.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="bg-blue-600 rounded-full p-3">
-              <Building2 className="h-8 w-8 text-white" />
-            </div>
+            <Building2 className="h-12 w-12 text-blue-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Menu SaaS 3D</h1>
-          <p className="text-gray-600 mt-2">Cardápios digitais com visualização 3D</p>
-        </div>
-
-        <Card className="shadow-xl border-0">
-          <Tabs defaultValue="login" className="w-full">
+          <CardTitle className="text-2xl">
+            {activeTab === 'login' ? 'Acesse sua conta' : 'Crie sua conta'}
+          </CardTitle>
+          <CardDescription>
+            {activeTab === 'login' 
+              ? 'Entre para gerenciar seu cardápio' 
+              : 'Preencha os dados para criar sua conta'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login" className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Entrar
-              </TabsTrigger>
-              <TabsTrigger value="register" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
-                Cadastrar
-              </TabsTrigger>
+              <TabsTrigger value="login">Entrar</TabsTrigger>
+              <TabsTrigger value="signup">Cadastrar</TabsTrigger>
             </TabsList>
-
+            
             <TabsContent value="login">
-              <CardHeader>
-                <CardTitle>Faça seu login</CardTitle>
-                <CardDescription>
-                  Entre com suas credenciais para acessar sua conta
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input 
+                    id="email" 
+                    name="email" 
+                    type="email" 
+                    placeholder="seu@email.com" 
+                    required 
+                  />
+                </div>
+                <div className="space-y-2 relative">
+                  <Label htmlFor="password">Senha</Label>
+                  <div className="relative">
                     <Input
-                      id="login-email"
-                      name="email"
-                      type="email"
-                      placeholder="seu@email.com"
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
                       required
                     />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2.5 text-gray-500"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Senha</Label>
-                    <div className="relative">
-                      <Input
-                        id="login-password"
-                        name="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        required
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4 text-gray-400" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-gray-400" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full" 
-                    disabled={loading}
-                  >
-                    {loading ? 'Entrando...' : 'Entrar'}
-                  </Button>
-                </form>
-                
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                  <div className="flex items-center gap-2 text-blue-800 font-medium mb-2">
-                    <Shield className="h-4 w-4" />
-                    Acesso Master Admin
-                  </div>
-                  <p className="text-sm text-blue-600">
-                    Email: derickcampossantos1@gmail.com<br />
-                    Senha: Dede@02@
-                  </p>
                 </div>
-              </CardContent>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Entrando...' : 'Entrar'}
+                </Button>
+              </form>
             </TabsContent>
 
-            <TabsContent value="register">
-              <CardHeader>
-                <CardTitle>Crie sua conta</CardTitle>
-                <CardDescription>
-                  Registre-se e crie sua organização
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="register-name">Nome completo</Label>
+            <TabsContent value="signup">
+              <form onSubmit={handleSignup} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signup-name">Nome</Label>
+                  <Input 
+                    id="signup-name" 
+                    name="name" 
+                    type="text" 
+                    placeholder="Seu nome completo" 
+                    required 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">E-mail</Label>
+                  <Input 
+                    id="signup-email" 
+                    name="email" 
+                    type="email" 
+                    placeholder="seu@email.com" 
+                    required 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organizationName">Nome do Estabelecimento</Label>
+                  <Input 
+                    id="organizationName" 
+                    name="organizationName" 
+                    type="text" 
+                    placeholder="Nome do seu negócio" 
+                    required 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Senha</Label>
+                  <div className="relative">
                     <Input
-                      id="register-name"
-                      name="name"
-                      type="text"
-                      placeholder="Seu nome"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-email">Email</Label>
-                    <Input
-                      id="register-email"
-                      name="email"
-                      type="email"
-                      placeholder="seu@email.com"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-organization">Nome da organização</Label>
-                    <Input
-                      id="register-organization"
-                      name="organizationName"
-                      type="text"
-                      placeholder="Ex: Pizzaria do Zé"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password">Senha</Label>
-                    <Input
-                      id="register-password"
+                      id="signup-password"
                       name="password"
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
+                      minLength={6}
                       required
                     />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2.5 text-gray-500"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-confirm-password">Confirmar senha</Label>
-                    <Input
-                      id="register-confirm-password"
-                      name="confirmPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      required
-                    />
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full" 
-                    disabled={loading}
-                  >
-                    {loading ? 'Cadastrando...' : 'Criar conta'}
-                  </Button>
-                </form>
-              </CardContent>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Criando conta...' : 'Criar conta'}
+                </Button>
+              </form>
             </TabsContent>
           </Tabs>
-        </Card>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

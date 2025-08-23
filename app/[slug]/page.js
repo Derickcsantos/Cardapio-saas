@@ -143,7 +143,7 @@ export default function PublicMenuPage({ params }) {
         </div>
 
         {/* Action Buttons */}
-        {(organization?.whatsapp || organization?.instagram) && (
+        {(organization?.whatsapp || organization?.instagram || organization?.tiktok) && (
           <Card className="mb-8">
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center">
@@ -153,23 +153,51 @@ export default function PublicMenuPage({ params }) {
               
               <div className="flex flex-wrap gap-4">
                 {organization?.whatsapp && (
-                  <Button
-                    onClick={handleWhatsAppClick}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                  <a
+                    href={`https://wa.me/${organization.whatsapp.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex-1 min-w-[150px] ${
+                      organization.tiktok ? 'flex-[1_1_calc(33.333%-1rem)]' : 'flex-[1_1_calc(50%-0.5rem)]'
+                    }`}
                   >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp
-                  </Button>
+                    <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp
+                    </Button>
+                  </a>
                 )}
                 
                 {organization?.instagram && (
-                  <Button
-                    onClick={handleInstagramClick}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                  <a
+                    href={`https://instagram.com/${organization.instagram.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex-1 min-w-[150px] ${
+                      organization.tiktok ? 'flex-[1_1_calc(33.333%-1rem)]' : 'flex-[1_1_calc(50%-0.5rem)]'
+                    }`}
                   >
-                    <Instagram className="h-4 w-4 mr-2" />
-                    Instagram
-                  </Button>
+                    <Button className="w-full bg-pink-600 hover:bg-pink-700 text-white">
+                      <Instagram className="h-4 w-4 mr-2" />
+                      Instagram
+                    </Button>
+                  </a>
+                )}
+                
+                {organization?.tiktok && (
+                  <a
+                    href={`https://tiktok.com/@${organization.tiktok.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 min-w-[150px] flex-[1_1_calc(33.333%-1rem)]"
+                  >
+                    <Button className="w-full bg-black hover:bg-gray-900 text-white">
+                      <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.43.29-.8.68-1.06 1.16-.32.6-.4 1.25-.43 1.91-.06.83.02 1.67.33 2.43.44 1.01 1.4 1.74 2.5 1.98.7.16 1.42.09 2.09-.19.96-.39 1.66-1.2 1.9-2.2.15-.62.17-1.27.17-1.91.01-2.61.01-5.22.01-7.83.01-4.19.01-8.37.02-12.56v-.01z"></path>
+                      </svg>
+                      TikTok
+                    </Button>
+                  </a>
                 )}
               </div>
             </CardContent>
